@@ -1,0 +1,190 @@
+{
+ "built": "2026-11-03",
+ "resorts": [
+  {
+   "slug": "tenguyama",
+   "ko": "오타루 텐구야마",
+   "ja": "小樽天狗山スキー場",
+   "en": "Otaru Tenguyama",
+   "short": "텐구야마",
+   "city": "오타루",
+   "lat": 43.17350504545453,
+   "lon": 140.9706050272727,
+   "summary": {
+    "top": 534,
+    "base": 204,
+    "drop": 330,
+    "runs": 6,
+    "lifts": 3,
+    "counts": {
+     "easy": 1,
+     "intermediate": 3,
+     "advanced": 2,
+     "unknown": 0
+    },
+    "longest": {
+     "id": 506720248,
+     "len": 1506
+    },
+    "topPt": [
+     -108,
+     -508,
+     534
+    ],
+    "basePt": [
+     346,
+     464,
+     204
+    ]
+   }
+  },
+  {
+   "slug": "asarigawa",
+   "ko": "아사리가와 온천",
+   "ja": "朝里川温泉スキー場",
+   "en": "Asarigawa Onsen",
+   "short": "아사리가와",
+   "city": "오타루",
+   "lat": 43.140414039999996,
+   "lon": 141.02917307799996,
+   "summary": {
+    "top": 630,
+    "base": 154,
+    "drop": 476,
+    "runs": 20,
+    "lifts": 4,
+    "counts": {
+     "easy": 10,
+     "intermediate": 5,
+     "advanced": 2,
+     "unknown": 3
+    },
+    "longest": {
+     "id": 506717456,
+     "len": 1146
+    },
+    "topPt": [
+     -1104,
+     -1024,
+     630
+    ],
+    "basePt": [
+     569,
+     325,
+     154
+    ]
+   }
+  },
+  {
+   "slug": "kiroro",
+   "ko": "키로로 리조트",
+   "ja": "キロロリゾート",
+   "en": "Kiroro Resort",
+   "short": "키로로",
+   "city": "아카이가와",
+   "lat": 43.062305448275865,
+   "lon": 141.009312937931,
+   "summary": {
+    "top": 1187,
+    "base": 524,
+    "drop": 663,
+    "runs": 45,
+    "lifts": 10,
+    "counts": {
+     "easy": 21,
+     "intermediate": 13,
+     "advanced": 11,
+     "unknown": 0
+    },
+    "longest": {
+     "id": 327028790,
+     "len": 1881
+    },
+    "topPt": [
+     1419,
+     -654,
+     1187
+    ],
+    "basePt": [
+     -2026,
+     1357,
+     524
+    ]
+   }
+  },
+  {
+   "slug": "teine",
+   "ko": "삿포로 테이네",
+   "ja": "サッポロテイネ",
+   "en": "Sapporo Teine",
+   "short": "테이네",
+   "city": "삿포로",
+   "lat": 43.08780279444444,
+   "lon": 141.20704801111114,
+   "summary": {
+    "top": 993,
+    "base": 343,
+    "drop": 650,
+    "runs": 22,
+    "lifts": 12,
+    "counts": {
+     "easy": 13,
+     "intermediate": 4,
+     "advanced": 4,
+     "unknown": 1
+    },
+    "longest": {
+     "id": 918333012,
+     "len": 3604
+    },
+    "topPt": [
+     -803,
+     -1521,
+     993
+    ],
+    "basePt": [
+     38,
+     1740,
+     343
+    ]
+   }
+  },
+  {
+   "slug": "kokusai",
+   "ko": "삿포로 국제 스키장",
+   "ja": "札幌国際スキー場",
+   "en": "Sapporo Kokusai",
+   "short": "삿포로 국제",
+   "city": "삿포로",
+   "lat": 43.072070306666674,
+   "lon": 141.06849770666665,
+   "summary": {
+    "top": 1094,
+    "base": 625,
+    "drop": 469,
+    "runs": 22,
+    "lifts": 4,
+    "counts": {
+     "easy": 8,
+     "intermediate": 10,
+     "advanced": 2,
+     "unknown": 2
+    },
+    "longest": {
+     "id": 506713307,
+     "len": 2133
+    },
+    "topPt": [
+     -787,
+     -342,
+     1094
+    ],
+    "basePt": [
+     1084,
+     45,
+     625
+    ]
+   }
+  }
+ ]
+}
