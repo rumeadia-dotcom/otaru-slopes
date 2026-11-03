@@ -444,8 +444,9 @@ canvas.addEventListener("pointerleave", () => { if (finePointer.matches && point
 canvas.addEventListener("wheel", (e) => { e.preventDefault(); cam.dist = clamp(cam.dist * Math.exp(e.deltaY * 0.0012), cam.minDist, cam.maxDist); markInput(); needsRender = true; }, { passive: false });
 function pan(dx, dy) {
   const k = cam.dist * 0.0016;
-  const fwd = new THREE.Vector3(-Math.sin(cam.theta), 0, -Math.cos(cam.theta)), right = new THREE.Vector3(fwd.z, 0, -fwd.x);
-  cam.target.addScaledVector(right, -dx * k).addScaledVector(fwd, dy * k);
+  // 손가락이 움직인 방향으로 지형이 따라오도록: 시점(target)은 반대로 이동
+  const fwd = new THREE.Vector3(-Math.sin(cam.theta), 0, -Math.cos(cam.theta)), right = new THREE.Vector3(-fwd.z, 0, fwd.x);
+  cam.target.addScaledVector(right, -dx * k).addScaledVector(fwd, -dy * k);
   const b = world.bounds; if (b) { cam.target.x = clamp(cam.target.x, b.minX, b.maxX); cam.target.z = clamp(cam.target.z, -b.maxY, -b.minY); }
 }
 window.addEventListener("keydown", (e) => {
