@@ -402,15 +402,24 @@ canvas.addEventListener("pointerdown", (e) => {
   try { canvas.setPointerCapture(e.pointerId); } catch {}
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (pointers.size === 1) drag = { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now(), moved: false, type: e.pointerType };
-  else if (pointers.size === 2) { const [a, b] = [...pointers.values()]; pinch0 = { d: Math.hypot(a.x - b.x, a.y - b.y), cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2, dist: cam.dist }; drag = null; }
+  else if (pointers.size === 2) {
+    const [a, b] = [...pointers.values()];
+    const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
+    placeCamera(cam.theta, cam.phi, cam.dist, cam.target);
+    // 시작 시점의 거리·각도·손가락 중점 아래 지면(anchor)을 기억해 두고, 이후엔 anchor 가 항상 손가락 중점 아래에 오도록 맞춘다
+    pinch0 = { d: Math.hypot(a.x - b.x, a.y - b.y), angle: Math.atan2(b.y - a.y, b.x - a.x), dist: cam.dist, theta: cam.theta, anchor: groundPoint(cx, cy) };
+    drag = null;
+  }
   markInput();
 });
 canvas.addEventListener("pointermove", (e) => {
   if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (pointers.size === 2 && pinch0) {
     const [a, b] = [...pointers.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y), cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
-    cam.dist = clamp((pinch0.dist * pinch0.d) / Math.max(10, d), cam.minDist, cam.maxDist);
-    pan(cx - pinch0.cx, cy - pinch0.cy); pinch0.cx = cx; pinch0.cy = cy;
+    cam.dist = clamp((pinch0.dist * pinch0.d) / Math.max(10, d), cam.minDist, cam.maxDist); // 벌리면 확대
+    let da = Math.atan2(b.y - a.y, b.x - a.x) - pinch0.angle; da = Math.atan2(Math.sin(da), Math.cos(da));
+    cam.theta = pinch0.theta + da; // 비틀면 같은 방향으로 회전 (측정으로 부호 확인)
+    panToAnchor(cx, cy);
     markInput(); needsRender = true; return;
   }
   if (drag && pointers.size === 1) {
@@ -442,12 +451,22 @@ canvas.addEventListener("pointerup", endPointer);
 canvas.addEventListener("pointercancel", endPointer);
 canvas.addEventListener("pointerleave", () => { if (finePointer.matches && pointers.size === 0) setHot(null); });
 canvas.addEventListener("wheel", (e) => { e.preventDefault(); cam.dist = clamp(cam.dist * Math.exp(e.deltaY * 0.0012), cam.minDist, cam.maxDist); markInput(); needsRender = true; }, { passive: false });
-function pan(dx, dy) {
-  const k = cam.dist * 0.0016;
-  // 손가락이 움직인 방향으로 지형이 따라오도록: 시점(target)은 반대로 이동
-  const fwd = new THREE.Vector3(-Math.sin(cam.theta), 0, -Math.cos(cam.theta)), right = new THREE.Vector3(-fwd.z, 0, fwd.x);
-  cam.target.addScaledVector(right, -dx * k).addScaledVector(fwd, -dy * k);
-  const b = world.bounds; if (b) { cam.target.x = clamp(cam.target.x, b.minX, b.maxX); cam.target.z = clamp(cam.target.z, -b.maxY, -b.minY); }
+// 화면 좌표 → 시점 높이의 수평면과 만나는 월드 점
+function groundPoint(x, y) {
+  const rect = canvas.getBoundingClientRect();
+  ndc.set(((x - rect.left) / rect.width) * 2 - 1, -((y - rect.top) / rect.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  const ray = raycaster.ray, t = (cam.target.y - ray.origin.y) / ray.direction.y;
+  return t > 0 ? ray.origin.clone().addScaledVector(ray.direction, t) : null;
+}
+// 두 손가락 이동·확대·회전 뒤: 제스처 시작 때 손가락 중점 아래 있던 지면(anchor)이 지금 중점 아래에 오도록 시점을 옮긴다
+function panToAnchor(cx, cy) {
+  if (!pinch0?.anchor) return;
+  placeCamera(cam.theta, cam.phi, cam.dist, cam.target);
+  const b = groundPoint(cx, cy);
+  if (!b) return;
+  cam.target.x += pinch0.anchor.x - b.x; cam.target.z += pinch0.anchor.z - b.z;
+  const bd = world.bounds; if (bd) { cam.target.x = clamp(cam.target.x, bd.minX, bd.maxX); cam.target.z = clamp(cam.target.z, -bd.maxY, -bd.minY); }
 }
 window.addEventListener("keydown", (e) => {
   if (e.target.matches("input, textarea")) return;
