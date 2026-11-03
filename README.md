@@ -1,5 +1,7 @@
 # 오타루 슬로프
 
+**공개 URL: https://rumeadia-dotcom.github.io/otaru-slopes/** (GitHub Pages, `main` 브랜치 루트 자동 배포)
+
 오타루·삿포로 근교 5개 스키장(텐구야마·아사리가와·키로로·테이네·삿포로 국제)의 실제 슬로프를 3D 지형 위에 올려 보여 주는 모바일 웹.
 [축제지도](https://festival-map.konanest.com/)와 같은 "밤 위의 불빛" 톤으로, PC에서는 마우스를 올리면 / 모바일에서는 탭하면 코스 정보가 뜬다.
 
