@@ -4,7 +4,7 @@
 //   - 오타루 5곳은 OSM 의 landuse=winter_sports 경계 폴리곤으로 나눈다
 //   - 니세코 4곳은 OSM 에 "ニセコユナイテッド" 하나로만 있어서, 리프트 이름(에이스/킹=히라후, 花園=하나조노, ジャンボ/ドリーム=안누푸리, ビレッジ 등=빌리지)으로
 //     리프트를 나눈 뒤 각 코스를 가장 가까운 리프트의 구역에 붙인다 (경계선은 그리지 않음)
-// 표고: AWS Terrain Tiles (Mapzen terrarium, z14) — https://registry.opendata.aws/terrain-tiles/
+// 표고: 国土地理院 DEM10B 타일 (https://maps.gsi.go.jp/development/ichiran.html#dem) 우선, 결측은 AWS Terrain Tiles (Mapzen terrarium)
 import fs from "node:fs";
 import path from "node:path";
 import zlib from "node:zlib";
@@ -16,7 +16,8 @@ const TILE_DIR = path.join(ROOT, "scripts/raw/tiles");
 const OUT_DIR = path.join(ROOT, "data");
 const Z = 14;
 const PAD_M = 420; // 리조트 경계 밖으로 더 보여 줄 지형 (m)
-const MAX_GRID = 200; // 긴 변 샘플 수 상한
+const MAX_GRID = 480; // 긴 변 샘플 수 상한 (격자 10m 이상)
+const MIN_STEP = 10; // 격자 최소 간격 (m) — GSI DEM10B 해상도에 맞춤
 const ASSIGN_KM = 3.2; // 경계 밖 피스트를 가장 가까운 리조트에 붙일 때 허용 거리
 
 const RESORTS = [
@@ -158,34 +159,49 @@ function decodePNG(buf) {
   return { w, h, bpp, data: out };
 }
 
-async function fetchTile(z, x, y) {
+// 표고 타일 두 종류:
+//  gsi: 国土地理院 DEM10B (dem_png, 10m 메시 기반, z14 까지). 값 = (R*65536+G*256+B)*0.01, 0x800000 은 결측
+//  terrarium: Mapzen/AWS (SRTM 30m 기반). GSI 결측(바다·범위 밖)을 메우는 용도
+const SOURCES = {
+  gsi: { url: (z, x, y) => `https://cyberjapandata.gsi.go.jp/xyz/dem_png/${z}/${x}/${y}.png`, decode: (r, g, b) => { const v = r * 65536 + g * 256 + b; return v === 0x800000 ? NaN : (v < 0x800000 ? v : v - 0x1000000) * 0.01; } },
+  terrarium: { url: (z, x, y) => `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`, decode: (r, g, b) => r * 256 + g + b / 256 - 32768 },
+};
+async function fetchTile(src, z, x, y) {
   fs.mkdirSync(TILE_DIR, { recursive: true });
-  const file = path.join(TILE_DIR, `${z}-${x}-${y}.png`);
+  const file = path.join(TILE_DIR, `${src === "terrarium" ? "" : src + "-"}${z}-${x}-${y}.png`);
   if (!fs.existsSync(file)) {
-    const url = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`;
-    const res = await fetch(url);
+    const url = SOURCES[src].url(z, x, y);
+    const res = await fetch(url, { headers: { "User-Agent": "otaru-slopes/0.1 (data build)" } });
+    if (res.status === 404) return null; // GSI 범위 밖 타일
     if (!res.ok) throw new Error(`타일 실패 ${url} ${res.status}`);
     fs.writeFileSync(file, Buffer.from(await res.arrayBuffer()));
-    process.stdout.write(`  타일 ${z}/${x}/${y}\n`);
+    process.stdout.write(`  타일 ${src} ${z}/${x}/${y}\n`);
   }
   return decodePNG(fs.readFileSync(file));
 }
 
-// 타일 모자이크 → (lat, lon) 에서 표고(m) 이중선형 보간
+// 타일 모자이크 → (lat, lon) 에서 표고(m) 이중선형 보간. GSI 우선, 결측은 terrarium 으로 메움
 async function mosaic(bbox) {
   const x0 = Math.floor(lon2x(bbox.w, Z)), x1 = Math.floor(lon2x(bbox.e, Z));
   const y0 = Math.floor(lat2y(bbox.n, Z)), y1 = Math.floor(lat2y(bbox.s, Z));
   const cols = x1 - x0 + 1, rows = y1 - y0 + 1;
   const W = cols * 256, H = rows * 256;
   const hgt = new Float32Array(W * H);
+  let filled = 0;
   for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) {
-    const t = await fetchTile(Z, tx, ty);
+    const t = await fetchTile("gsi", Z, tx, ty);
+    let fb = null;
     for (let py = 0; py < 256; py++) for (let px = 0; px < 256; px++) {
-      const i = (py * t.w + px) * t.bpp;
-      const r = t.data[i], g = t.data[i + 1], b = t.data[i + 2];
-      hgt[(ty - y0) * 256 * W + (tx - x0) * 256 + py * W + px] = r * 256 + g + b / 256 - 32768;
+      let h = NaN;
+      if (t) { const i = (py * t.w + px) * t.bpp; h = SOURCES.gsi.decode(t.data[i], t.data[i + 1], t.data[i + 2]); }
+      if (Number.isNaN(h)) {
+        fb ??= await fetchTile("terrarium", Z, tx, ty);
+        const i = (py * fb.w + px) * fb.bpp; h = SOURCES.terrarium.decode(fb.data[i], fb.data[i + 1], fb.data[i + 2]); filled++;
+      }
+      hgt[(ty - y0) * 256 * W + (tx - x0) * 256 + py * W + px] = h;
     }
   }
+  if (filled) process.stdout.write(`  GSI 결측 ${filled}px 를 terrarium 으로 메움\n`);
   return {
     at(lat, lon) {
       const fx = (lon2x(lon, Z) - x0) * 256 - 0.5, fy = (lat2y(lat, Z) - y0) * 256 - 0.5;
@@ -266,7 +282,7 @@ for (const r of resorts) {
   let minY = Math.min(...xs.map((p) => p[1])) - PAD_M, maxY = Math.max(...xs.map((p) => p[1])) + PAD_M;
   // 격자 간격: 긴 변이 MAX_GRID 샘플이 되도록, 5m 단위 올림
   const span = Math.max(maxX - minX, maxY - minY);
-  const step = Math.max(15, Math.ceil(span / (MAX_GRID - 1) / 5) * 5);
+  const step = Math.max(MIN_STEP, Math.ceil(span / (MAX_GRID - 1) / 5) * 5);
   const cols = Math.floor((maxX - minX) / step) + 1, rows = Math.floor((maxY - minY) / step) + 1;
   maxX = minX + (cols - 1) * step; maxY = minY + (rows - 1) * step;
 
@@ -331,7 +347,7 @@ for (const r of resorts) {
     group: r.group ?? "otaru",
     summary: { top, base, drop: top - base, runs: listed.length, lifts: lifts.length, counts, longest: longest ? { id: longest.id, len: longest.len } : null, topPt: topPt.map((v) => Math.round(v)), basePt: basePt.map((v) => Math.round(v)) },
     pistes, lifts,
-    source: { osm: "© OpenStreetMap contributors (ODbL)", dem: "Mapzen/AWS Terrain Tiles (z14)", built: new Date().toISOString().slice(0, 10) },
+    source: { osm: "© OpenStreetMap contributors (ODbL)", dem: "国土地理院 DEM10B (dem_png z14), 결측은 Mapzen/AWS Terrain Tiles", built: new Date().toISOString().slice(0, 10) },
   };
   fs.writeFileSync(path.join(OUT_DIR, `${r.slug}.json`), JSON.stringify(out));
   index.push({ slug: r.slug, ko: r.ko, ja: r.ja, en: r.en, short: r.short, city: r.city, group: out.group, lat: lat0, lon: lon0, summary: out.summary });

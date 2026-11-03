@@ -32,7 +32,7 @@ open http://127.0.0.1:8765/scripts/mobile-preview.html
 - **코스·리프트**: OpenStreetMap `piste:type=downhill|mogul|snow_park`, `aerialway=*` (© OpenStreetMap contributors, ODbL).
   오타루 5곳은 리조트 경계(`landuse=winter_sports`) 안에 중심이 있는 것만 할당하고, 밖이면 3.2 km 안의 가장 가까운 리조트에 붙인다.
   니세코는 OSM 에 "ニセコユナイテッド" 하나로만 있어서, 리프트 이름(에이스/킹=히라후, 花園=하나조노, ジャンボ/ドリーム=안누푸리, ビレッジ 등=빌리지)으로 리프트를 나눈 뒤 각 코스를 가장 가까운 리프트의 구역에 붙인다. 그래서 니세코 4곳은 경계선을 그리지 않으며, 구역 경계 근처 코스는 실제 운영사와 다를 수 있다.
-- **표고**: Mapzen / AWS Terrain Tiles (terrarium, z14 ≈ 7–9 m 해상도). 격자 간격은 리조트 크기에 따라 15–25 m.
+- **표고**: 国土地理院 DEM10B 타일(`dem_png`, 10 m 메시, z14) 우선, 결측은 Mapzen / AWS Terrain Tiles(SRTM 30 m 기반)로 메움. 격자 간격 10 m (테이네만 15 m). 출처 표기: 国土地理院 (GSI タイル利用規約).
 - **길이·표고차·평균 경사**는 OSM 선 좌표 + 위 표고에서 계산한 값이다. 공식 수치와 다를 수 있다.
 - **한국어 코스명은 음역**(`scripts/build-data.mjs` 의 `KO` 표)이며 공식 명칭이 아니다. OSM 에 이름이 없는 코스는 "이름 미등록" 으로 표시한다.
 - 화면의 **세로 표고는 1.3배 강조**(`app.js` 의 `EXAG`)해 그린다. 표시 수치는 실측 그대로.

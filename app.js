@@ -69,6 +69,9 @@ const TERRAIN_FRAG = /* glsl */ `
   uniform vec3 uLow; uniform vec3 uMid; uniform vec3 uHigh; uniform vec3 uBg; uniform vec3 uAccent; uniform vec3 uLight; uniform vec3 uCam;
   uniform float uFogNear; uniform float uFogFar;
   varying vec3 vW; varying vec3 vN; varying float vH; varying vec2 vUv;
+  float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+  float vnoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash2(i), hash2(i + vec2(1, 0)), f.x), mix(hash2(i + vec2(0, 1)), hash2(i + vec2(1, 1)), f.x), f.y); }
   void main() {
     float h = uHMin + (vH - uHMin) / uExag; // 실제 표고
     float t = clamp((h - uHMin) / max(uHMax - uHMin, 1.0), 0.0, 1.0);
@@ -85,6 +88,14 @@ const TERRAIN_FRAG = /* glsl */ `
     float c1 = h / 50.0; float d1 = abs(fract(c1 + 0.5) - 0.5); float l1 = 1.0 - smoothstep(0.0, fwidth(c1) * 1.3, d1);
     float c2 = h / 250.0; float d2 = abs(fract(c2 + 0.5) - 0.5); float l2 = 1.0 - smoothstep(0.0, fwidth(c2) * 1.3, d2);
     col = mix(col, col * 1.3 + 0.04, l1 * 0.3 + l2 * 0.24);
+    // 가까이 왔을 때만: 10m 보조 등고선 + 눈 표면의 잔잔한 질감 (값 노이즈 2옥타브)
+    float dCam = distance(vW, uCam);
+    float near = 1.0 - smoothstep(600.0, 2400.0, dCam);
+    if (near > 0.001) {
+      float c0 = h / 10.0; float d0 = abs(fract(c0 + 0.5) - 0.5); float l0 = 1.0 - smoothstep(0.0, fwidth(c0) * 1.2, d0);
+      col = mix(col, col * 1.18 + 0.02, l0 * 0.2 * near);
+      col *= 1.0 + (vnoise(vW.xz / 24.0) * 0.6 + vnoise(vW.xz / 7.0) * 0.4 - 0.5) * 0.12 * near;
+    }
     // 슬로프 오버레이
     vec4 ov = texture2D(uOverlay, vUv);
     vec3 idc = texture2D(uId, vUv).rgb;
@@ -161,7 +172,9 @@ function buildTerrain(d) {
 function idColor(id) { return `rgb(${id & 255},${(id >> 8) & 255},0)`; }
 
 function paintOverlay(d, t) {
-  const S = 2048 / Math.max(t.W, t.H);
+  // 마우스 환경(대개 큰 화면)은 3072px, 터치 기기는 메모리를 아껴 2048px
+  const RES = finePointer.matches && renderer.capabilities.maxTextureSize >= 4096 ? 3072 : 2048;
+  const S = RES / Math.max(t.W, t.H);
   const cw = Math.max(2, Math.round(t.W * S)), ch = Math.max(2, Math.round(t.H * S));
   const mk = () => { const c = document.createElement("canvas"); c.width = cw; c.height = ch; return c; };
   const cc = mk(), ic = mk();
@@ -307,8 +320,8 @@ function mountResort(d) {
   const up = new THREE.Vector3(s.topPt[0] - s.basePt[0], 0, -(s.topPt[1] - s.basePt[1])).normalize();
   const fitPts = new Float32Array(feats.reduce((n, f) => n + f.pts.length, 0) * 3);
   let q = 0; for (const f of feats) for (const p of f.pts) { fitPts[q++] = p[0]; fitPts[q++] = yOf(p[2]); fitPts[q++] = -p[1]; }
-  world = { center, radius: r, target: center.clone(), upDir: up, hMin: d.grid.hMin, hMax: d.grid.hMax, bounds: { minX: t.minX, maxX: t.minX + t.W, minY: t.minY, maxY: t.maxY }, fitPts };
-  cam.minDist = Math.max(250, r * 0.25); cam.maxDist = r * 6;
+  world = { center, radius: r, target: center.clone(), upDir: up, hMin: d.grid.hMin, hMax: d.grid.hMax, yMin: yOf(d.grid.hMin), yMax: yOf(d.grid.hMax), step: d.grid.step, bounds: { minX: t.minX, maxX: t.minX + t.W, minY: t.minY, maxY: t.maxY }, fitPts };
+  cam.minDist = Math.max(150, r * 0.1); cam.maxDist = r * 6; // 10m 격자라 꽤 가까이까지 허용 (카메라는 지표 위 30m 유지)
   terrainMat.uniforms.uFogNear.value = r * 2.2; terrainMat.uniforms.uFogFar.value = r * 7;
 
   setHot(null); setSel(null);
@@ -366,6 +379,9 @@ function placeCamera(theta, phi, dist, target) {
 }
 function applyCamera() {
   placeCamera(cam.theta, cam.phi, cam.dist, cam.target);
+  // 가까이 확대했을 때 카메라가 산 속으로 들어가지 않도록 지표 위 30m 는 유지
+  const ground = elevAt(camera.position.x, -camera.position.z) + 30;
+  if (camera.position.y < ground) { camera.position.y = ground; camera.lookAt(cam.target); camera.updateMatrixWorld(); }
   terrainMat.uniforms.uCam.value.copy(camera.position);
   $("#compassNeedle").style.transform = `rotate(${(-cam.theta * 180) / Math.PI}deg)`;
 }
@@ -407,7 +423,7 @@ canvas.addEventListener("pointerdown", (e) => {
     const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
     placeCamera(cam.theta, cam.phi, cam.dist, cam.target);
     // 시작 시점의 거리·각도·손가락 중점 아래 지면(anchor)을 기억해 두고, 이후엔 anchor 가 항상 손가락 중점 아래에 오도록 맞춘다
-    pinch0 = { d: Math.hypot(a.x - b.x, a.y - b.y), angle: Math.atan2(b.y - a.y, b.x - a.x), dist: cam.dist, theta: cam.theta, anchor: groundPoint(cx, cy) };
+    pinch0 = { d: Math.hypot(a.x - b.x, a.y - b.y), angle: Math.atan2(b.y - a.y, b.x - a.x), dist: cam.dist, theta: cam.theta, targetY: cam.target.y, anchor: terrainAt(cx, cy) ?? groundPoint(cx, cy) };
     drag = null;
   }
   markInput();
@@ -419,6 +435,7 @@ canvas.addEventListener("pointermove", (e) => {
     cam.dist = clamp((pinch0.dist * pinch0.d) / Math.max(10, d), cam.minDist, cam.maxDist); // 벌리면 확대
     let da = Math.atan2(b.y - a.y, b.x - a.x) - pinch0.angle; da = Math.atan2(Math.sin(da), Math.cos(da));
     cam.theta = pinch0.theta + da; // 비틀면 같은 방향으로 회전 (측정으로 부호 확인)
+    if (pinch0.anchor) cam.target.y = lerp(pinch0.targetY, pinch0.anchor.y, clamp(1 - cam.dist / pinch0.dist, 0, 1)); // 확대할수록 시점 높이를 손가락 아래 지면에 맞춤
     panToAnchor(cx, cy);
     markInput(); needsRender = true; return;
   }
@@ -450,20 +467,35 @@ function endPointer(e) {
 canvas.addEventListener("pointerup", endPointer);
 canvas.addEventListener("pointercancel", endPointer);
 canvas.addEventListener("pointerleave", () => { if (finePointer.matches && pointers.size === 0) setHot(null); });
-canvas.addEventListener("wheel", (e) => { e.preventDefault(); cam.dist = clamp(cam.dist * Math.exp(e.deltaY * 0.0012), cam.minDist, cam.maxDist); markInput(); needsRender = true; }, { passive: false });
-// 화면 좌표 → 시점 높이의 수평면과 만나는 월드 점
-function groundPoint(x, y) {
+canvas.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  // 커서 아래 지면을 향해 확대: 시점(target)을 그 지점 쪽으로 거리 비율만큼 끌어온다 → 확대할수록 시점이 산 표면에 놓인다
+  const next = clamp(cam.dist * Math.exp(e.deltaY * 0.0012), cam.minDist, cam.maxDist);
+  const g = terrainAt(e.clientX, e.clientY);
+  if (g) { const k = next / cam.dist; cam.target.lerpVectors(g, cam.target, k); }
+  cam.dist = next; markInput(); needsRender = true;
+}, { passive: false });
+// 화면 좌표 아래의 실제 지표 점 (없으면 null)
+function terrainAt(x, y) {
+  placeCamera(cam.theta, cam.phi, cam.dist, cam.target);
   const rect = canvas.getBoundingClientRect();
   ndc.set(((x - rect.left) / rect.width) * 2 - 1, -((y - rect.top) / rect.height) * 2 + 1);
   raycaster.setFromCamera(ndc, camera);
-  const ray = raycaster.ray, t = (cam.target.y - ray.origin.y) / ray.direction.y;
+  return marchTerrain(raycaster.ray);
+}
+// 화면 좌표 → 시점 높이의 수평면과 만나는 월드 점
+function groundPoint(x, y, planeY = cam.target.y) {
+  const rect = canvas.getBoundingClientRect();
+  ndc.set(((x - rect.left) / rect.width) * 2 - 1, -((y - rect.top) / rect.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  const ray = raycaster.ray, t = (planeY - ray.origin.y) / ray.direction.y;
   return t > 0 ? ray.origin.clone().addScaledVector(ray.direction, t) : null;
 }
 // 두 손가락 이동·확대·회전 뒤: 제스처 시작 때 손가락 중점 아래 있던 지면(anchor)이 지금 중점 아래에 오도록 시점을 옮긴다
 function panToAnchor(cx, cy) {
   if (!pinch0?.anchor) return;
   placeCamera(cam.theta, cam.phi, cam.dist, cam.target);
-  const b = groundPoint(cx, cy);
+  const b = groundPoint(cx, cy, pinch0.anchor.y);
   if (!b) return;
   cam.target.x += pinch0.anchor.x - b.x; cam.target.z += pinch0.anchor.z - b.z;
   const bd = world.bounds; if (bd) { cam.target.x = clamp(cam.target.x, bd.minX, bd.maxX); cam.target.z = clamp(cam.target.z, -bd.maxY, -bd.minY); }
@@ -480,17 +512,48 @@ window.addEventListener("keydown", (e) => {
 
 // ── 피킹 ────────────────────────────────────────────────
 const ndc = new THREE.Vector2();
+// 높이 격자와 광선의 교점 — 삼각형 30만 개를 다 검사하는 대신, 격자 상자 안을 반 칸씩 전진하다 지표 아래로 들어가면 이분법으로 다듬는다
+const _m = new THREE.Vector3();
+function marchTerrain(ray) {
+  const b = world.bounds; if (!b) return null;
+  const o = ray.origin, d = ray.direction;
+  const lo = [b.minX, world.yMin - 5, -b.maxY], hi = [b.maxX, world.yMax + 5, -b.minY];
+  let tmin = 0, tmax = 1e6;
+  for (const [i, k] of [[0, "x"], [1, "y"], [2, "z"]]) {
+    const inv = 1 / d[k]; let t0 = (lo[i] - o[k]) * inv, t1 = (hi[i] - o[k]) * inv;
+    if (t0 > t1) [t0, t1] = [t1, t0];
+    tmin = Math.max(tmin, t0); tmax = Math.min(tmax, t1);
+  }
+  if (!(tmax >= tmin)) return null;
+  const step = world.step * 0.5;
+  let prev = tmin;
+  for (let t = tmin; t <= tmax + step; t += step) {
+    const tt = Math.min(t, tmax);
+    _m.copy(o).addScaledVector(d, tt);
+    if (_m.y <= elevAt(_m.x, -_m.z)) {
+      let a = prev, c = tt;
+      for (let i = 0; i < 10; i++) { const mid = (a + c) / 2; _m.copy(o).addScaledVector(d, mid); if (_m.y > elevAt(_m.x, -_m.z)) a = mid; else c = mid; }
+      return _m.copy(o).addScaledVector(d, (a + c) / 2).clone();
+    }
+    prev = tt;
+    if (tt === tmax) break;
+  }
+  return null;
+}
 function pickAt(x, y) {
   if (!terrain) return null;
   const rect = canvas.getBoundingClientRect();
   ndc.set(((x - rect.left) / rect.width) * 2 - 1, -((y - rect.top) / rect.height) * 2 + 1);
   raycaster.setFromCamera(ndc, camera);
-  const hits = raycaster.intersectObjects([terrain, ...liftPicks], false);
-  if (!hits.length) return null;
-  const h = hits[0];
-  if (h.object !== terrain) return byId.get(h.object.userData.id) || null;
-  if (!h.uv || !idData) return null;
-  const px = Math.round(h.uv.x * (overlayCtx.cw - 1)), py = Math.round((1 - h.uv.y) * (overlayCtx.ch - 1));
+  const tp = marchTerrain(raycaster.ray);
+  const tDist = tp ? tp.distanceTo(raycaster.ray.origin) : Infinity;
+  const lh = liftPicks.length ? raycaster.intersectObjects(liftPicks, false) : [];
+  if (lh.length && lh[0].distance <= tDist + 40) return byId.get(lh[0].object.userData.id) || null; // 케이블은 지면 위에 떠 있으니 약간의 여유
+  if (!tp || !idData) return null;
+  const b = world.bounds;
+  const u = (tp.x - b.minX) / (b.maxX - b.minX), v = (-tp.z - b.minY) / (b.maxY - b.minY);
+  if (u < 0 || u > 1 || v < 0 || v > 1) return null;
+  const px = Math.round(u * (overlayCtx.cw - 1)), py = Math.round((1 - v) * (overlayCtx.ch - 1));
   const read = (x, y) => { if (x < 0 || y < 0 || x >= overlayCtx.cw || y >= overlayCtx.ch) return 0; const i = (y * overlayCtx.cw + x) * 4; return idData.data[i + 3] === 255 ? idData.data[i] + (idData.data[i + 1] << 8) : 0; };
   let id = read(px, py);
   for (let r = 1; !id && r <= 3; r++) for (let dy = -r; !id && dy <= r; dy++) for (let dx = -r; !id && dx <= r; dx++) id = read(px + dx, py + dy);
@@ -687,6 +750,8 @@ init();
 // 개발·검증용 훅 (콘솔): __slopes.screen(id) → 코스 중간점의 화면 좌표
 window.__slopes = {
   get feats() { return feats; }, get sel() { return sel; }, get hot() { return hot; }, get cam() { return cam; }, go,
-  touch() { markInput(); }, pick: pickAt,
+  touch() { markInput(); }, pick: pickAt, yOf: (z) => yOf(z),
+  project(x, y, z) { const p = new THREE.Vector3(x, y, z).project(camera); return { x: ((p.x + 1) / 2) * innerWidth, y: ((1 - p.y) / 2) * innerHeight, behind: p.z > 1 }; },
+  march(x, y) { const r = canvas.getBoundingClientRect(); ndc.set(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1); raycaster.setFromCamera(ndc, camera); return marchTerrain(raycaster.ray); },
   screen(id) { const f = byId.get(id); if (!f) return null; const p = f.mid.clone().project(camera); return { x: ((p.x + 1) / 2) * innerWidth, y: ((1 - p.y) / 2) * innerHeight, name: f.main }; },
 };
