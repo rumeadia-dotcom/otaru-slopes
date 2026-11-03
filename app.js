@@ -669,7 +669,8 @@ async function init() {
     const res = await fetch("data/resorts.json");
     Object.assign(index, await res.json());
   } catch (e) { toast("스키장 목록을 불러오지 못했어요"); return; }
-  $("#resorts").innerHTML = index.resorts.map((r) => `<button type="button" data-slug="${esc(r.slug)}" aria-pressed="false">${esc(r.short)}<small>${r.summary.runs}</small></button>`).join("");
+  // 오타루 근교 / 니세코 유나이티드 사이에 구분선
+  $("#resorts").innerHTML = index.resorts.map((r, i) => `${i > 0 && r.group !== index.resorts[i - 1].group ? `<i class="sep" aria-hidden="true"></i>` : ""}<button type="button" data-slug="${esc(r.slug)}" aria-pressed="false">${esc(r.short)}<small>${r.summary.runs}</small></button>`).join("");
   $("#resorts").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) go(b.dataset.slug); });
   addEventListener("hashchange", () => go(location.hash.slice(1), false));
   $("#dock").classList.add("enter");

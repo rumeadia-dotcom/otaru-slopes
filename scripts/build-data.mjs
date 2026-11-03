@@ -1,6 +1,9 @@
-// 오타루 주변 5개 스키장 — OSM 피스트/리프트 + 공개 표고 타일 → data/*.json
+// 오타루 주변 5개 + 니세코 유나이티드 4개 스키장 — OSM 피스트/리프트 + 공개 표고 타일 → data/*.json
 // 실행: node scripts/build-data.mjs            (타일은 scripts/raw/tiles 에 캐시)
-// 입력: scripts/raw/overpass.json  (Overpass: piste:type / aerialway / landuse=winter_sports, out geom)
+// 입력: scripts/raw/overpass*.json  (Overpass: piste:type / aerialway / landuse=winter_sports, out geom)
+//   - 오타루 5곳은 OSM 의 landuse=winter_sports 경계 폴리곤으로 나눈다
+//   - 니세코 4곳은 OSM 에 "ニセコユナイテッド" 하나로만 있어서, 리프트 이름(에이스/킹=히라후, 花園=하나조노, ジャンボ/ドリーム=안누푸리, ビレッジ 등=빌리지)으로
+//     리프트를 나눈 뒤 각 코스를 가장 가까운 리프트의 구역에 붙인다 (경계선은 그리지 않음)
 // 표고: AWS Terrain Tiles (Mapzen terrarium, z14) — https://registry.opendata.aws/terrain-tiles/
 import fs from "node:fs";
 import path from "node:path";
@@ -8,7 +11,7 @@ import zlib from "node:zlib";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const RAW = path.join(ROOT, "scripts/raw/overpass.json");
+const RAW_FILES = fs.readdirSync(path.join(ROOT, "scripts/raw")).filter((f) => /^overpass.*\.json$/.test(f)).map((f) => path.join(ROOT, "scripts/raw", f));
 const TILE_DIR = path.join(ROOT, "scripts/raw/tiles");
 const OUT_DIR = path.join(ROOT, "data");
 const Z = 14;
@@ -22,7 +25,14 @@ const RESORTS = [
   { slug: "kiroro", wayId: 1081650641, ko: "키로로 리조트", ja: "キロロリゾート", en: "Kiroro Resort", short: "키로로", city: "아카이가와" },
   { slug: "teine", wayId: 1083658291, ko: "삿포로 테이네", ja: "サッポロテイネ", en: "Sapporo Teine", short: "테이네", city: "삿포로" },
   { slug: "kokusai", wayId: 672881398, ko: "삿포로 국제 스키장", ja: "札幌国際スキー場", en: "Sapporo Kokusai", short: "삿포로 국제", city: "삿포로" },
+  // 니세코 유나이티드 (같은 안누푸리 산을 4개 사업자가 나눠 씀). 범위 안에서 리프트 이름으로 구역을 가른다
+  { slug: "hirafu", group: "niseko", ko: "니세코 그랑 히라후", ja: "ニセコグラン・ヒラフ", en: "Niseko Grand Hirafu", short: "히라후", city: "굿찬", liftRe: /エース|Ace|キング|King|スインギング|Swinging/ },
+  { slug: "hanazono", group: "niseko", ko: "니세코 하나조노", ja: "ニセコHANAZONO", en: "Niseko Hanazono", short: "하나조노", city: "굿찬", liftRe: /花園|HANAZONO|Hanazono|シンフォニー|Symphony/ },
+  { slug: "village", group: "niseko", ko: "니세코 빌리지", ja: "ニセコビレッジ", en: "Niseko Village", short: "니세코 빌리지", city: "니세코", liftRe: /ビレッジ|Village|バンザイ|Banzai|コミュニティ|Community|森の|Mori|ニセコゴンドラ|Niseko Gondola|ワンダーランド|Wonderland|カントリー|Country/ },
+  { slug: "annupuri", group: "niseko", ko: "니세코 안누푸리", ja: "ニセコアンヌプリ国際", en: "Niseko Annupuri", short: "안누푸리", city: "니세코", liftRe: /ジャンボ|Jumbo|アンヌプリ|Annupuri|ドリーム|Dream/ },
 ];
+const NISEKO_BBOX = { s: 42.84, n: 42.895, w: 140.64, e: 140.705 }; // 모이와(서쪽)·아사히가오카(동북)는 제외
+const NISEKO_MAX_KM = 1.2; // 구역 리프트에서 이보다 멀면 니세코 코스로 안 본다
 
 // 한국어 표기 — 공식 명칭이 아닌 음역 (README 참고)
 const KO = {
@@ -51,6 +61,29 @@ const KO = {
   "パノラマ1号リフト": "파노라마 1호 리프트", "サミット エクスプレス": "서밋 익스프레스", "パノラマ2号リフト": "파노라마 2호 리프트",
   "白樺第3リフト": "시라카바 제3 리프트", "白樺第2リフト": "시라카바 제2 리프트", "エイトゴンドラ": "에이트 곤돌라", "聖火台第1リフト": "세이카다이 제1 리프트",
   "白樺第1リフトB線": "시라카바 제1 리프트 B선", "白樺第1リフトA線": "시라카바 제1 리프트 A선", "パラダイスリフト": "파라다이스 리프트", "風防付スノーエスカレーター": "스노 에스컬레이터",
+  // 니세코 — 코스
+  "ファミリーコース": "패밀리 코스", "アルペンコース": "알펜 코스", "望羊コース": "보요 코스", "センターコース": "센터 코스", "フリココース": "후리코 코스", "グリーンコース": "그린 코스",
+  "ホリデーコース": "홀리데이 코스", "ジャンボコース": "점보 코스", "高原コース": "고겐 코스", "国体コース": "고쿠타이 코스", "ラージコース": "라지 코스", "見晴コース": "미하라시 코스",
+  "第2の壁": "제2의 벽", "温泉沢コース": "온센자와 코스", "パラレルコース": "패러렐 코스", "Renraku": "렌라쿠 (연락로)", "白樺コース": "시라카바 코스", "スーパーコース": "슈퍼 코스",
+  "羊蹄サンセット": "요테이 선셋", "初級者迂回路": "초급자 우회로", "迂回路": "우회로", "キングエリア連絡通路": "킹 에리어 연락로", "粉雪コース": "고나유키 코스", "せんの木コース": "센노키 코스",
+  "Sennoki": "센노키 코스", "クリステルガーデン": "크리스털 가든", "接続": "접속로", "Shirakaba": "시라카바 코스",
+  "レジェンド・オブ・シンヤ": "레전드 오브 신야", "Legend of Shinya": "레전드 오브 신야", "シルバードリーム": "실버 드림", "ステアウェイ・トゥ・ヘブン": "스테어웨이 투 헤븐", "HANAZONOパーク": "하나조노 파크",
+  "Juicy Fruit": "주시 프루트", "コリーズフォリー": "콜리스 폴리", "Strawberry Fields": "스트로베리 필즈", "Blueberry Fields": "블루베리 필즈",
+  "なまら": "나마라", "じゃがいも": "자가이모", "みそしる": "미소시루", "ドント・ブリンク": "돈트 블링크", "ばんざい": "반자이", "ネクストステージ": "넥스트 스테이지", "ファイナルフリング": "파이널 플링",
+  "こぐま": "코구마", "Koguma": "코구마", "ピュアマジック": "퓨어 매직", "Pure Magic": "퓨어 매직", "クルーザーコース": "크루저 코스", "Cruiser": "크루저 코스", "あげいも": "아게이모", "Ageimo": "아게이모",
+  "シェイキー・ニーズ": "셰이키 니즈", "ヤードセール": "야드 세일", "ジャンクヤード": "정크야드", "Nekko no Kabe": "넷코노카베", "スーパースーパースティション": "슈퍼스티션", "だべさ": "다베사", "じょっぴん": "좃핀",
+  "シューノケル": "슈노켈", "ワンダーランド": "원더랜드", "Wonderland": "원더랜드",
+  "パノラマコース": "파노라마 코스", "チャンピオンコース": "챔피언 코스", "Champion": "챔피언 코스", "ユートピアコース": "유토피아 코스", "Utopia": "유토피아 코스", "Utopia;Shirakaba": "유토피아·시라카바",
+  "シルバーコース": "실버 코스", "Silver": "실버 코스", "S字コース": "S자 코스", "深雪林間コース": "후카유키 린칸 코스", "チャレンジコース": "챌린지 코스", "Challenge": "챌린지 코스",
+  "ジュニアコース": "주니어 코스", "Junior": "주니어 코스", "パラダイスコース": "파라다이스 코스", "Paradise": "파라다이스 코스", "Dynamic": "다이내믹 코스", "Merchen": "메르헨 코스",
+  // 니세코 — 리프트
+  "エースファミリークワッド": "에이스 패밀리 쿼드", "キングホリデー第1ペア": "킹 홀리데이 제1 페어", "エースゴンドラ": "에이스 곤돌라", "エース第3ペアリフト": "에이스 제3 페어리프트", "エース第4ペア": "에이스 제4 페어",
+  "ワンダーランドチェアA線": "원더랜드 체어 A선", "ワンダーランドチェアB線": "원더랜드 체어 B선", "キング第4リフト": "킹 제4 리프트", "キング第３リフト": "킹 제3 리프트", "スインギングモンキー": "스윙잉 몽키", "King Gondola": "킹 곤돌라",
+  "花園第3クワッド フード付": "하나조노 제3 쿼드", "花園第2クワッド": "하나조노 제2 쿼드", "HANAZONO第1リフトフード付き": "하나조노 제1 리프트", "HANAZONO シンフォニーゴンドラ": "하나조노 심포니 곤돌라",
+  "ニセコゴンドラ": "니세코 곤돌라", "カントリーロードチェア": "컨트리 로드 체어", "森のチェア": "모리노 체어", "コミュニティーチェア": "커뮤니티 체어", "バンザイチェア": "반자이 체어",
+  "ビレッジエクスプレス": "빌리지 익스프레스", "アッパービレッジゴンドラ": "어퍼 빌리지 곤돌라",
+  "ジャンボ第１クワッドリフト": "점보 제1 쿼드리프트", "ジャンボ第2ペアリフト": "점보 제2 페어리프트", "ジャンボ第3ペアリフト": "점보 제3 페어리프트", "ジャンボ第4ペアリフト": "점보 제4 페어리프트",
+  "アンヌプリゴンドラ": "안누푸리 곤돌라", "ドリーム第1クワッドリフト": "드림 제1 쿼드리프트",
 };
 
 const DIFF = { novice: "easy", easy: "easy", intermediate: "intermediate", advanced: "advanced", expert: "advanced", freeride: "advanced", extreme: "advanced" };
@@ -166,41 +199,66 @@ async function mosaic(bbox) {
 }
 
 // ── 본 작업 ─────────────────────────────────────────────
-const osm = JSON.parse(fs.readFileSync(RAW, "utf8")).elements;
-const byId = new Map(osm.map((e) => [e.id, e]));
+const osm = [];
+const seen = new Set();
+for (const f of RAW_FILES) for (const e of JSON.parse(fs.readFileSync(f, "utf8")).elements) { const k = `${e.type}/${e.id}`; if (!seen.has(k)) { seen.add(k); osm.push(e); } }
+const byId = new Map(osm.filter((e) => e.type === "way").map((e) => [e.id, e]));
 const resorts = RESORTS.map((r) => {
+  if (!r.wayId) return { ...r, poly: null, center: null, pistes: [], lifts: [] };
   const w = byId.get(r.wayId);
   if (!w) throw new Error(`리조트 경계 없음 ${r.slug}`);
   return { ...r, poly: w.geometry, center: centroid(w.geometry), pistes: [], lifts: [] };
 });
+const polyResorts = resorts.filter((r) => r.poly), nisekoResorts = resorts.filter((r) => r.group === "niseko");
+const inNiseko = (c) => c.lat >= NISEKO_BBOX.s && c.lat <= NISEKO_BBOX.n && c.lon >= NISEKO_BBOX.w && c.lon <= NISEKO_BBOX.e;
 
-function assign(e) {
+// 경계 폴리곤이 있는 리조트: 중심이 폴리곤 안이면 그곳, 아니면 3.2km 안의 가장 가까운 곳
+function assignByPoly(e) {
   const c = centroid(e.geometry);
-  let hit = resorts.find((r) => inPoly(c.lat, c.lon, r.poly));
+  let hit = polyResorts.find((r) => inPoly(c.lat, c.lon, r.poly));
   if (!hit) {
-    const near = resorts.map((r) => ({ r, d: km(c, r.center) })).sort((a, b) => a.d - b.d)[0];
+    const near = polyResorts.map((r) => ({ r, d: km(c, r.center) })).sort((a, b) => a.d - b.d)[0];
     if (near.d <= ASSIGN_KM) hit = near.r;
   }
   return hit;
 }
-
-for (const e of osm) {
-  const t = e.tags || {};
-  if (e.type !== "way" || !e.geometry) continue;
-  if (t["piste:type"] === "downhill" || t["piste:type"] === "mogul" || t["piste:type"] === "snow_park") {
-    const r = assign(e);
-    if (r) r.pistes.push(e);
-  } else if (t.aerialway && t.aerialway !== "station" && t.aerialway !== "pylon") {
-    const r = assign(e);
-    if (r) r.lifts.push(e);
+// 니세코: 코스의 어느 점이든 가장 가까운 리프트 점을 가진 구역
+function assignNiseko(e) {
+  let best = null, bestD = Infinity;
+  for (const r of nisekoResorts) for (const l of r.lifts) for (const a of e.geometry) for (const b of l.geometry) {
+    const d = km(a, b); if (d < bestD) { bestD = d; best = r; }
   }
+  return bestD <= NISEKO_MAX_KM ? best : null;
+}
+
+const isPiste = (t) => t["piste:type"] === "downhill" || t["piste:type"] === "mogul" || t["piste:type"] === "snow_park";
+const isLift = (t) => t.aerialway && !["station", "pylon", "yes", "zip_line", "goods"].includes(t.aerialway);
+const ways = osm.filter((e) => e.type === "way" && e.geometry);
+// 1) 리프트 먼저 (니세코는 이름으로)
+for (const e of ways) {
+  const t = e.tags || {};
+  if (!isLift(t)) continue;
+  const c = centroid(e.geometry);
+  if (inNiseko(c)) { const r = nisekoResorts.find((r) => r.liftRe.test(`${t.name ?? ""} ${t["name:en"] ?? ""}`)); if (r) r.lifts.push(e); else console.log(`  니세코 리프트 구역 미정 → 제외: ${e.id} ${t.name} / ${t["name:en"]}`); }
+  else { const r = assignByPoly(e); if (r) r.lifts.push(e); }
+}
+// 2) 코스
+for (const e of ways) {
+  const t = e.tags || {};
+  if (!isPiste(t)) continue;
+  const c = centroid(e.geometry);
+  const r = inNiseko(c) ? assignNiseko(e) : assignByPoly(e);
+  if (r) r.pistes.push(e);
+}
+for (const r of nisekoResorts) {
+  r.center = centroid([...r.pistes.flatMap((p) => p.geometry), ...r.lifts.flatMap((l) => l.geometry)]);
 }
 
 const index = [];
 fs.mkdirSync(OUT_DIR, { recursive: true });
 
 for (const r of resorts) {
-  const all = [...r.poly, ...r.pistes.flatMap((p) => p.geometry), ...r.lifts.flatMap((l) => l.geometry)];
+  const all = [...(r.poly ?? []), ...r.pistes.flatMap((p) => p.geometry), ...r.lifts.flatMap((l) => l.geometry)];
   const lat0 = r.center.lat, lon0 = r.center.lon;
   const { toXY, toLL } = projector(lat0, lon0);
   const xs = all.map((p) => toXY(p.lat, p.lon));
@@ -269,24 +327,26 @@ for (const r of resorts) {
     slug: r.slug, ko: r.ko, ja: r.ja, en: r.en, short: r.short, city: r.city,
     origin: { lat: lat0, lon: lon0 },
     grid: { cols, rows, step, minX, maxY, hMin: Math.round(hMin), hMax: Math.round(hMax), heights: Buffer.from(heights.buffer).toString("base64") },
-    boundary: r.poly.map((p) => toXY(p.lat, p.lon).map((v) => Math.round(v))),
+    boundary: (r.poly ?? []).map((p) => toXY(p.lat, p.lon).map((v) => Math.round(v))),
+    group: r.group ?? "otaru",
     summary: { top, base, drop: top - base, runs: listed.length, lifts: lifts.length, counts, longest: longest ? { id: longest.id, len: longest.len } : null, topPt: topPt.map((v) => Math.round(v)), basePt: basePt.map((v) => Math.round(v)) },
     pistes, lifts,
     source: { osm: "© OpenStreetMap contributors (ODbL)", dem: "Mapzen/AWS Terrain Tiles (z14)", built: new Date().toISOString().slice(0, 10) },
   };
   fs.writeFileSync(path.join(OUT_DIR, `${r.slug}.json`), JSON.stringify(out));
-  index.push({ slug: r.slug, ko: r.ko, ja: r.ja, en: r.en, short: r.short, city: r.city, lat: lat0, lon: lon0, summary: out.summary });
+  index.push({ slug: r.slug, ko: r.ko, ja: r.ja, en: r.en, short: r.short, city: r.city, group: out.group, lat: lat0, lon: lon0, summary: out.summary });
   console.log(`${r.slug.padEnd(10)} 격자 ${cols}x${rows}@${step}m 타일 ${dem.tiles} 표고 ${Math.round(hMin)}–${Math.round(hMax)}m | 피스트 ${pistes.length} (목록 ${listed.length}, 면 ${pistes.filter((p) => p.area).length}) 리프트 ${lifts.length} | 정상 ${top}m 베이스 ${base}m`);
 }
 fs.writeFileSync(path.join(OUT_DIR, "resorts.json"), JSON.stringify({ built: new Date().toISOString().slice(0, 10), resorts: index }, null, 1));
 
 // ── 자가 검증: 공개 수치(weathernews.jp 스키장 정보 등)와 비교. OSM 피스트 끝점 표고라 ±60m 허용 ──
-const EXPECT = { tenguyama: [532, 150], asarigawa: [660, 140], kiroro: [1180, 570], teine: [1023, 350], kokusai: [1100, 630] };
+// 니세코: 히라후 1200/260, 빌리지 1170/280, 안누푸리 1156/400 (weathernews.jp). 하나조노는 리프트 정상 기준 약 1045/308 (표고차 737m 기사 + 베이스 308m)
+const EXPECT = { tenguyama: [532, 150], asarigawa: [660, 140], kiroro: [1180, 570], teine: [1023, 350], kokusai: [1100, 630], hirafu: [1200, 260], village: [1170, 280], annupuri: [1156, 400], hanazono: [1045, 308] };
 let bad = 0;
 for (const r of index) {
   const [et, eb] = EXPECT[r.slug];
   const okTop = Math.abs(r.summary.top - et) <= 60, okBase = Math.abs(r.summary.base - eb) <= 60;
   if (!okTop || !okBase || r.summary.runs < 5 || r.summary.lifts < 2) { bad++; console.log(`!! 검증 실패 ${r.slug}: top ${r.summary.top} (기대 ~${et}) base ${r.summary.base} (기대 ~${eb}) runs ${r.summary.runs} lifts ${r.summary.lifts}`); }
 }
-console.log(bad ? `검증 실패 ${bad}건` : "검증 통과: 5개 리조트 정상/베이스 표고가 공개 수치 ±60m 안, 코스·리프트 수 충분");
+console.log(bad ? `검증 실패 ${bad}건` : `검증 통과: ${index.length}개 리조트 정상/베이스 표고가 공개 수치 ±60m 안, 코스·리프트 수 충분`);
 process.exitCode = bad ? 1 : 0;

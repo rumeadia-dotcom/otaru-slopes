@@ -8,6 +8,7 @@
    "en": "Otaru Tenguyama",
    "short": "텐구야마",
    "city": "오타루",
+   "group": "otaru",
    "lat": 43.17350504545453,
    "lon": 140.9706050272727,
    "summary": {
@@ -45,6 +46,7 @@
    "en": "Asarigawa Onsen",
    "short": "아사리가와",
    "city": "오타루",
+   "group": "otaru",
    "lat": 43.140414039999996,
    "lon": 141.02917307799996,
    "summary": {
@@ -82,6 +84,7 @@
    "en": "Kiroro Resort",
    "short": "키로로",
    "city": "아카이가와",
+   "group": "otaru",
    "lat": 43.062305448275865,
    "lon": 141.009312937931,
    "summary": {
@@ -119,6 +122,7 @@
    "en": "Sapporo Teine",
    "short": "테이네",
    "city": "삿포로",
+   "group": "otaru",
    "lat": 43.08780279444444,
    "lon": 141.20704801111114,
    "summary": {
@@ -156,6 +160,7 @@
    "en": "Sapporo Kokusai",
    "short": "삿포로 국제",
    "city": "삿포로",
+   "group": "otaru",
    "lat": 43.072070306666674,
    "lon": 141.06849770666665,
    "summary": {
@@ -183,6 +188,158 @@
      1084,
      45,
      625
+    ]
+   }
+  },
+  {
+   "slug": "hirafu",
+   "ko": "니세코 그랑 히라후",
+   "ja": "ニセコグラン・ヒラフ",
+   "en": "Niseko Grand Hirafu",
+   "short": "히라후",
+   "city": "굿찬",
+   "group": "niseko",
+   "lat": 42.868364975692536,
+   "lon": 140.6856825291331,
+   "summary": {
+    "top": 1182,
+    "base": 260,
+    "drop": 922,
+    "runs": 79,
+    "lifts": 9,
+    "counts": {
+     "easy": 47,
+     "intermediate": 15,
+     "advanced": 17,
+     "unknown": 0
+    },
+    "longest": {
+     "id": 213556371,
+     "len": 3549
+    },
+    "topPt": [
+     -1902,
+     269,
+     1182
+    ],
+    "basePt": [
+     1336,
+     -1102,
+     260
+    ]
+   }
+  },
+  {
+   "slug": "hanazono",
+   "ko": "니세코 하나조노",
+   "ja": "ニセコHANAZONO",
+   "en": "Niseko Hanazono",
+   "short": "하나조노",
+   "city": "굿찬",
+   "group": "niseko",
+   "lat": 42.88482289926471,
+   "lon": 140.68723608400728,
+   "summary": {
+    "top": 1038,
+    "base": 300,
+    "drop": 738,
+    "runs": 21,
+    "lifts": 4,
+    "counts": {
+     "easy": 12,
+     "intermediate": 6,
+     "advanced": 3,
+     "unknown": 0
+    },
+    "longest": {
+     "id": 213573389,
+     "len": 2542
+    },
+    "topPt": [
+     -1600,
+     -1310,
+     1038
+    ],
+    "basePt": [
+     991,
+     747,
+     300
+    ]
+   }
+  },
+  {
+   "slug": "village",
+   "ko": "니세코 빌리지",
+   "ja": "ニセコビレッジ",
+   "en": "Niseko Village",
+   "short": "니세코 빌리지",
+   "city": "니세코",
+   "group": "niseko",
+   "lat": 42.85248435322581,
+   "lon": 140.67159964099466,
+   "summary": {
+    "top": 1167,
+    "base": 280,
+    "drop": 887,
+    "runs": 50,
+    "lifts": 9,
+    "counts": {
+     "easy": 32,
+     "intermediate": 9,
+     "advanced": 9,
+     "unknown": 0
+    },
+    "longest": {
+     "id": 334596804,
+     "len": 1388
+    },
+    "topPt": [
+     -728,
+     1977,
+     1167
+    ],
+    "basePt": [
+     1063,
+     -921,
+     280
+    ]
+   }
+  },
+  {
+   "slug": "annupuri",
+   "ko": "니세코 안누푸리",
+   "ja": "ニセコアンヌプリ国際",
+   "en": "Niseko Annupuri",
+   "short": "안누푸리",
+   "city": "니세코",
+   "group": "niseko",
+   "lat": 42.856243339569865,
+   "lon": 140.65254497010758,
+   "summary": {
+    "top": 1154,
+    "base": 402,
+    "drop": 752,
+    "runs": 35,
+    "lifts": 6,
+    "counts": {
+     "easy": 10,
+     "intermediate": 18,
+     "advanced": 7,
+     "unknown": 0
+    },
+    "longest": {
+     "id": 1108854579,
+     "len": 1702
+    },
+    "topPt": [
+     725,
+     1408,
+     1154
+    ],
+    "basePt": [
+     -374,
+     -962,
+     402
     ]
    }
   }
